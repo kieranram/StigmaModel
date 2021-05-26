@@ -1,0 +1,96 @@
+dx=0;(* dataset index*)
+w=0.8;(* proportion of the "normal" population who are conformists*)
+X=100;Y=100;(* dimensions of the population grid*)
+s=0.1;(* proportion of the population who are stigmatized*)
+q=0;(* probability of an agent's link being from outside his neighborhood(nb)*)
+R=3;(* range of the Moore neighborhood for network construction*)
+netSize=20;(* mean size of the actual network*)
+v=1;(* proportion of the population who update their status each period*)
+T=300;(* time horizon*)
+aR=0.15;(* fraction of the stigmatized who are revealed at t=0*)
+aN=0;(* fraction of the normals who are revealed at t=0*)
+sCrit=0.4;(* threshold to reveal by a stigmatized*)
+aCrit=0.3;(* threshold to accept by a conformist*)
+eCrit=0.05;(* threshold to accept by a compassionist*)
+REP=1;(* no. replications*)
+
+(* call the functions*)
+population[X,Y];
+neighbor[R];
+
+(* initialize data collection*)
+pNormA={};
+pNormO={};
+pNormN={};
+pStigR={};
+numNormA={};
+numConfA={};
+numCompA={};
+
+(* initialize network composition*)
+popType={};
+popNetSize={};
+popNumS={};
+popPropS={};
+ssAccept={};
+ssReveal={};
+LCC={};
+GCC={};
+
+Do[
+  network[netSize,q];
+  
+  (* network statistics*)
+  inetSize=Table[Length[netA[i]],{i,0,P-1}];(* i's network size*)
+  popNetSize=Append[popNetSize,inetSize];
+  comNet=Table[Map[UndirectedEdge[i,#]&,netA[i]],{i,0,X*Y-1}];
+  
+  (* compute the clustering coefficient*)
+  LCC=Append[LCC,Mean[LocalClusteringCoefficient[Flatten[comNet]]]//N];
+  GCC=Append[GCC,GlobalClusteringCoefficient[Flatten[comNet]]//N];
+  Do[
+    typestatus[s,w];
+    evolve[v,T,w,sCrit,aCrit,eCrit,aR,aN];
+    (* compute and save*)
+    numReveal=Table[Count[timeReveal[t],1],{t,0,T}];
+    numAccept=Table[Count[timeAccept[t],1],{t,0,T}];
+    numNeutral=Table[Count[timeAccept[t],0],{t,0,T}];
+    numOppose=Table[Count[timeAccept[t],-1],{t,0,T}];
+    
+    numNormal=Count[aType,02];
+    numStig=Count[aType,1];
+    posNorm=Position[aType,02];
+    posStig=Position[aType,1];
+    pNormA=Append[pNormA,Table[(1/numNormal)*Length[Intersection[posNorm,Position[timeAccept[t],1]]],{t,0,T}]];
+    pNormO=Append[pNormO,Table[(1/numNormal)*Length[Intersection[posNorm,Position[timeAccept[t],-1]]],{t,0,T}]];
+    pNormN=Append[pNormN,Table[(1/numNormal)*Length[Intersection[posNorm,Position[timeAccept[t],0]]],{t,0,T}]];
+    pStigR=Append[pStigR,Table[(1/numStig)*Length[Intersection[posStig,Position[timeReveal[t],1]]],{t,0,T}]];
+    
+    posCNF=Position[aType,0];(* positions of conformists*)
+    posCMP=Position[aType,2];(* positions of compassionists*)
+    
+    (* fraction of accepting normals who are conformists*)
+    numNormA=Append[numNormA,Table[Length[Intersection[posNorm,Position[timeAccept[t],1]]],{t,0,T}]];
+    numConfA=Append[numConfA,Table[Length[Intersection[posCNF,Position[timeAccept[t],1]]],{t,0,T}]];
+    numCompA=Append[numCompA,Table[Length[Intersection[posCMP,Position[timeAccept[t],1]]],{t,0,T}]];
+    
+    (* collect network-specific data on agents' status*)
+    inumS=Table[Count[Extract[aType,netApart[i]+1],1],{i,0,P-1}];(* number of Ss in i's network*)
+    ipropS=inumS/inetSize;(* prop. of Ss in i's network*)
+    
+    popType=Append[popType,aType];
+    popNumS=Append[popNumS,inumS];
+    popPropS=Append[popPropS,ipropS];
+    ssAccept=Append[ssAccept,timeAccept[T]];
+    ssReveal=Append[ssReveal,timeReveal[T]];
+    
+    ,{w,0,1,0.1}
+  ];
+    
+  ,{q,
+    Join[{0,0.05,0.1,0.15},
+      Table[k,{k,0.2,1,0.1}]
+    ]
+  }
+    
+];

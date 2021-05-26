@@ -1,0 +1,143 @@
+population[X_,Y_]:=
+(
+    P=X*Y;
+    toIndex[n_,m_]:=n-1+(m-1)*X;(* function for transforming(n, m) into a single index number*)
+    toCoord[x_]:={Mod[x,X]+1,Quotient[x,X]+1};(* function for transforming an index number into(n, m) coordinates*)
+);
+
+typestatus[s_,w_]:=
+(
+    stig=RandomSample[Range[P],IntegerPart[P*s]];
+    types=ReplacePart[Table[0,{i,1,P}],Subsets[stig,{1}]→1];
+    comp=RandomSample[Complement[Range[P],stig],Round[(P-Length[stig])*(1-w)]];
+    types=ReplacePart[types,Subsets[comp,{1}]→2];
+    Do[type[i]=types[[i+1]],{i,0,P-1}];
+    ClearAll[types,stig,comp];
+);
+
+xtbl[a_]:=
+(
+    Which[
+        (a-R≥1)&&(a+R≤X), (* No boundaries hit *)
+            Table[i,{i,a-R,a+R}],
+        (a-R<1)&&(a+R≤X), (* Lower boundary hit *)
+            Union[Table[i,{i,1,a+R}],Table[i,{i,X+(a-R),X}]],
+        (a-R≥1)&&(a+R>X), (* Upper boundary hit *)
+            Union[Table[i,{i,a-R,X}],Table[i,{i,1,(a+R)-X}]]
+        ]
+);
+
+ytbl[b_]:=
+(
+    Which[
+        (b-R≥1)&&(b+R≤Y), (* No boundaries hit *)
+            Table[i,{i,b-R,b+R}], 
+        (b-R<1)&&(b+R≤Y), (* Lower boundary hit *)
+            Union[Table[i,{i,1,b+R}],Table[i,{i,Y+(b-R),Y}]],
+        (b-R≥1)&&(b+R>Y), (* Upper boundary hit *)
+            Union[Table[i,{i,b-R,Y}],Table[i,{i,1,(b+R)-Y}]]
+        ]
+);
+
+neighbor[R_]:=
+(
+    nbIndex=Table[
+                Flatten[
+                    Table[
+                        toIndex[i,j],{i,xtbl[a]},{j,ytbl[b]} (* for i in xtbl(a), for j in ytbl(b) get_ind(i,j) *)
+                        ]
+                    ,1]
+                ,{b,1,Y},{a,1,X}]; (* Double loop over 1-Y (b), 1-X (a) *)
+    FNB=Flatten[nbIndex,1];
+    Do[nb[i]=FNB[[i+1]],{i,0,P-1}];
+    ClearAll[FNB,nbIndex];
+);
+
+network[netSize_,q_]:=
+(
+    (* construct potential network*)
+    Do[netP[a]=DeleteCases[nb[a],a],{a,0,P-1}];(* exclude oneself from one's own neighborhood*)
+    (* construct actual network*)
+    Do[netA[i]={},{i,0,P-1}];
+    avail=Table[i,{i,0,P-1}];
+    totLen=0; 
+    avgLen=0;
+    invP=Table[i,{i,0,P-1}];
+    While[avgLen<netSize,
+        trial1=RandomChoice[avail];
+        indq=RandomReal[];
+        trial2=Which[0≤indq<q,
+                        RandomChoice[Complement[invP,nb[trial1]]],
+                    q≤indq≤1,
+                        RandomChoice[netP[trial1]]
+                    ];
+        If[FreeQ[netA[trial1],trial2],
+            netA[trial1]=Join[netA[trial1],{trial2}];
+            netA[trial2]=Join[netA[trial2],{trial1}];
+            totLen=totLen+2;
+            avgLen=totLen/P;
+        ];
+    ];
+);
+
+evolve[v_,T_,w_,sCrit_,aCrit_,eCrit_,aR_,aN_]:= (
+  Do[netApart[i]=Partition[netA[i],1],{i,0,P-1}];(* partition netA to extract the elements from tempAccept*)
+  aType=Table[type[i],{i,0,P-1}];(* put agent types into a table form for use in the code*)
+
+  (* initial condition on the population at t=0*)
+  initS=RandomSample[Position[aType,1],Round[Count[aType,1]*aR]];(* positions of type-Ss who are initially revealed*)
+
+  initN=RandomSample[Position[aType,02],Round[Count[aType,02]*aN]];(* positions of normals initially accepting*)
+  timeReveal[0]=ReplacePart[Table[-1,{i,1,P}],initS→1];(* type S initially revealed; everyone else hidden*)
+  timeAccept[0]=ReplacePart[Table[0,{i,1,P}],Union[initS,initN]→1];(* all initially accepting; others neutral*)
+  Do[rho[i]=Which[type[i]==1,sCrit,type[i]==0,aCrit,type[i]==2,eCrit],{i,0,P-1}];(* assign thresholds*)
+
+  Do[
+    popReveal=Count[timeReveal[t-1],1];(* no. revealed agents in the global population*)
+    popAccept=Count[timeAccept[t-1],1];(* no. accepting agents in the global population*)
+    Do[
+      If[netA[i]=={},
+        propA[i]=0;
+        propR[i]=0;
+      ,
+        propA[i]=Count[Extract[timeAccept[t-1],netApart[i]+1],1]/Length[netA[i]];
+        propR[i]=Count[Extract[timeReveal[t-1],netApart[i]+1],1]/Length[netA[i]];
+      ]
+      ,{i,0,P-1}];(* compute the proportion of an agent's network who are accepting/revealed*)
+
+    (* decision making by the stigmatized(S)- type 1 : switch from(N,H) to(A,R) iff ait-1≥τS*)
+    tempReveal=ReplacePart[timeReveal[t-1],Intersection[Position[aType,1],
+      Position[timeReveal[t-1],-1],
+      Position[Table[propA[i]-rho[i],{i,0,P-1}],n_/;n≥0]]->1];
+
+    tempAccept=ReplacePart[timeAccept[t-1],Intersection[Position[aType,1],
+      Position[timeAccept[t-1],0],
+      Position[Table[propA[i]-rho[i],{i,0,P-1}],n_/;n≥0]]→1];
+
+    (* decision making by the conformists(CNF)- type 0*)(* go to(O,H) if ait-1<τCNF: oppose*)
+    tempAccept=ReplacePart[tempAccept,Intersection[Position[aType,0],
+      Position[Table[propA[i]-rho[i],{i,0,P-1}],n_/;n<0]]→-1];
+      (* go to(A,H) if ait-1≥τCNF: accept*)
+
+    tempAccept=ReplacePart[tempAccept,Intersection[Position[aType,0],
+      Position[Table[propA[i]-rho[i],{i,0,P-1}],n_/;n≥0]]→1];
+
+    (* decision making by the compassionists(CMP)- type 2*)
+      (* go to(N,H) if rit-1<τCMP: neutral*)
+    tempAccept=ReplacePart[tempAccept,Intersection[Position[aType,2],
+      Position[Table[propR[i]-rho[i],{i,0,P-1}],n_/;n<0]]→0];
+      (* go to(A,H) if rit-1≥τCMP: accept*)
+    tempAccept=ReplacePart[tempAccept,Intersection[Position[aType,2],
+      Position[Table[propR[i]-rho[i],{i,0,P-1}],n_/;n≥0]]→1];
+
+    (* update the individual status*)
+    timeReveal[t]=tempReveal;
+    timeAccept[t]=tempAccept;
+
+    (* update the population state*)
+    timePropA[t-1]=Table[propA[i],{i,0,P-1}];
+    timePropR[t-1]=Table[propR[i],{i,0,P-1}];
+
+  ,{t,1,T}];
+
+);
