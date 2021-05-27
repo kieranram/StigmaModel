@@ -86,8 +86,8 @@ evolve[v_,T_,w_,sCrit_,aCrit_,eCrit_,aR_,aN_]:= (
 
   (* initial condition on the population at t=0*)
   initS=RandomSample[Position[aType,1],Round[Count[aType,1]*aR]];(* positions of type-Ss who are initially revealed*)
-
   initN=RandomSample[Position[aType,02],Round[Count[aType,02]*aN]];(* positions of normals initially accepting*)
+  
   timeReveal[0]=ReplacePart[Table[-1,{i,1,P}],initS→1];(* type S initially revealed; everyone else hidden*)
   timeAccept[0]=ReplacePart[Table[0,{i,1,P}],Union[initS,initN]→1];(* all initially accepting; others neutral*)
   Do[rho[i]=Which[type[i]==1,sCrit,type[i]==0,aCrit,type[i]==2,eCrit],{i,0,P-1}];(* assign thresholds*)
@@ -103,7 +103,8 @@ evolve[v_,T_,w_,sCrit_,aCrit_,eCrit_,aR_,aN_]:= (
         propA[i]=Count[Extract[timeAccept[t-1],netApart[i]+1],1]/Length[netA[i]];
         propR[i]=Count[Extract[timeReveal[t-1],netApart[i]+1],1]/Length[netA[i]];
       ]
-      ,{i,0,P-1}];(* compute the proportion of an agent's network who are accepting/revealed*)
+      ,{i,0,P-1}
+    ];(* compute the proportion of an agent's network who are accepting/revealed*)
 
     (* decision making by the stigmatized(S)- type 1 : switch from(N,H) to(A,R) iff ait-1≥τS*)
     tempReveal=ReplacePart[timeReveal[t-1],Intersection[Position[aType,1],
@@ -114,11 +115,11 @@ evolve[v_,T_,w_,sCrit_,aCrit_,eCrit_,aR_,aN_]:= (
       Position[timeAccept[t-1],0],
       Position[Table[propA[i]-rho[i],{i,0,P-1}],n_/;n≥0]]→1];
 
-    (* decision making by the conformists(CNF)- type 0*)(* go to(O,H) if ait-1<τCNF: oppose*)
+    (* decision making by the conformists(CNF)- type 0*)
+    (* go to(O,H) if ait-1<τCNF: oppose*)
     tempAccept=ReplacePart[tempAccept,Intersection[Position[aType,0],
       Position[Table[propA[i]-rho[i],{i,0,P-1}],n_/;n<0]]→-1];
-      (* go to(A,H) if ait-1≥τCNF: accept*)
-
+    (* go to(A,H) if ait-1≥τCNF: accept*)
     tempAccept=ReplacePart[tempAccept,Intersection[Position[aType,0],
       Position[Table[propA[i]-rho[i],{i,0,P-1}],n_/;n≥0]]→1];
 
